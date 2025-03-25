@@ -368,3 +368,40 @@
     protocol-paused: (var-get protocol-paused)
   }
 )
+
+;; Get user's current collateral ratio
+(define-read-only (get-user-collateral-ratio (user principal))
+  (let (
+    (vault (default-to { collateral: u0, debt: u0, last-fee-timestamp: u0 } (map-get? vaults user)))
+    (accrued-fees (calculate-accrued-fees user))
+    (current-debt (+ (get debt vault) accrued-fees))
+  )
+    (get-collateral-ratio (get collateral vault) current-debt)
+  )
+)
+
+;; Check if a vault is liquidatable
+(define-read-only (is-liquidatable (user principal))
+  (let (
+    (collateral-ratio (get-user-collateral-ratio user))
+  )
+    (< collateral-ratio LIQUIDATION-THRESHOLD)
+  )
+)
+
+;; FT token meta functions for BUSD stablecoin
+
+(define-public (transfer-busd (amount uint) (sender principal) (recipient principal) (memo (optional (buff 34))))
+  (begin
+    (asserts! (not (var-get protocol-paused)) ERR-NOT-AUTHORIZED)
+    (ft-transfer? busd amount sender recipient)
+  )
+)
+
+(define-read-only (get-name-busd)
+  (ok "BitStable USD")
+)
+
+(define-read-only (get-symbol-busd)
+  (ok "BUSD")
+)
