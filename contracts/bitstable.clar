@@ -108,3 +108,81 @@
     (ok true)
   )
 )
+
+;; Resume protocol functionality (callable by contract owner)
+(define-public (resume-protocol)
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+    (var-set protocol-paused false)
+    (ok true)
+  )
+)
+
+;; Oracle functions
+
+;; Update BTC/USD price (callable by oracle)
+(define-public (update-price (new-price uint))
+  (begin
+    (asserts! (is-eq tx-sender (var-get oracle-address)) ERR-NOT-AUTHORIZED)
+    (asserts! (> new-price u0) ERR-PRICE-INVALID)
+    (var-set last-price-btc-usd new-price)
+    (var-set last-price-update stacks-block-height)
+    (ok true)
+  )
+)
+
+;; Vault management functions
+
+;; Create/add collateral to vault and mint BUSD
+(define-public (deposit-collateral-and-borrow (collateral-amount uint) (busd-to-mint uint))
+  (let (
+    (sender tx-sender)
+    (existing-vault (default-to 
+      { collateral: u0, debt: u0, last-fee-timestamp: stacks-block-height } 
+      (map-get? vaults sender)
+    ))
+    (new-collateral (+ (get collateral existing-vault) collateral-amount))
+    (new-debt (+ (get debt existing-vault) busd-to-mint))
+    (current-time stacks-block-height)
+    (updated-debt (+ (get debt existing-vault) (calculate-accrued-fees sender)))
+    (final-debt (+ updated-debt busd-to-mint))
+  )
+    (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
+    (asserts! (not (var-get protocol-paused)) ERR-NOT-AUTHORIZED)
+    (asserts! (> collateral-amount u0) ERR-ZERO-AMOUNT)
+    (asserts! (>= new-collateral MINIMUM_COLLATERAL) ERR-BELOW-MINIMUM)
+    (asserts! (or (>= busd-to-mint MINIMUM_DEBT) (is-eq busd-to-mint u0)) ERR-BELOW-MINIMUM)
+    
+    ;; Check if price is recent enough
+    (asserts! (price-is-valid) ERR-PRICE-OUTDATED)
+    
+    ;; Check collateral ratio if minting BUSD
+    (if (> busd-to-mint u0)
+      (asserts! (is-collateral-ratio-valid new-collateral final-debt) ERR-INSUFFICIENT-COLLATERAL)
+      true
+    )
+    
+    ;; Transfer collateral from sender (would require sBTC or wrapped BTC contract integration)
+    ;; For example: (try! (stx-transfer? collateral-amount sender (as-contract tx-sender)))
+    ;; Using STX as placeholder for demonstration
+    (try! (stx-transfer? collateral-amount sender (as-contract tx-sender)))
+    
+    ;; Mint BUSD if requested
+    (if (> busd-to-mint u0)
+      (try! (ft-mint? busd busd-to-mint sender))
+      true
+    )
+    
+    ;; Update vault and global state
+    (map-set vaults sender {
+      collateral: new-collateral,
+      debt: final-debt,
+      last-fee-timestamp: current-time
+    })
+    
+    (var-set total-collateral (+ (var-get total-collateral) collateral-amount))
+    (var-set total-debt (+ (var-get total-debt) busd-to-mint))
+    
+    (ok true)
+  )
+)
