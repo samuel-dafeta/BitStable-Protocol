@@ -405,3 +405,49 @@
 (define-read-only (get-symbol-busd)
   (ok "BUSD")
 )
+
+(define-read-only (get-decimals-busd)
+  (ok u6)
+)
+
+(define-read-only (get-balance-busd (user principal))
+  (ok (ft-get-balance busd user))
+)
+
+(define-read-only (get-total-supply-busd)
+  (ok (ft-get-supply busd))
+)
+
+;; BST governance token functions
+
+(define-public (transfer-bst (amount uint) (sender principal) (recipient principal) (memo (optional (buff 34))))
+  (ft-transfer? bst amount sender recipient)
+)
+
+(define-read-only (get-name-bst)
+  (ok "BitStable Governance Token")
+)
+
+(define-read-only (get-symbol-bst)
+  (ok "BST")
+)
+
+(define-read-only (get-decimals-bst)
+  (ok u6)
+)
+
+(define-read-only (get-balance-bst (user principal))
+  (ok (ft-get-balance bst user))
+)
+
+(define-read-only (get-total-supply-bst)
+  (ok (ft-get-supply bst))
+)
+
+;; Mint BST tokens (callable by contract owner)
+(define-public (mint-bst (amount uint) (recipient principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+    (ft-mint? bst amount recipient)
+  )
+)
