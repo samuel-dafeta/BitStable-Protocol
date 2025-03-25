@@ -67,3 +67,44 @@
     last-fee-timestamp: uint  ;; Last time stability fee was calculated
   }
 )
+
+;; Initialize contract with key parameters
+(define-public (initialize (oracle principal) (collector principal))
+  (begin
+    (asserts! (not (var-get initialized)) ERR-ALREADY-INITIALIZED)
+    (var-set contract-owner tx-sender)
+    (var-set oracle-address oracle)
+    (var-set fee-collector collector)
+    (var-set initialized true)
+    (ok true)
+  )
+)
+
+;; Governance functions
+
+;; Update oracle address (callable by contract owner)
+(define-public (set-oracle (new-oracle principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+    (var-set oracle-address new-oracle)
+    (ok true)
+  )
+)
+
+;; Update fee collector (callable by contract owner)
+(define-public (set-fee-collector (new-collector principal))
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+    (var-set fee-collector new-collector)
+    (ok true)
+  )
+)
+
+;; Emergency pause protocol (callable by contract owner)
+(define-public (pause-protocol)
+  (begin
+    (asserts! (is-eq tx-sender (var-get contract-owner)) ERR-NOT-AUTHORIZED)
+    (var-set protocol-paused true)
+    (ok true)
+  )
+)
