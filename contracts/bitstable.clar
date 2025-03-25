@@ -240,3 +240,53 @@
     (ok true)
   )
 )
+
+;; Liquidate undercollateralized vault
+(define-public (liquidate (vault-owner principal) (busd-amount uint))
+  (let (
+    (liquidator tx-sender)
+    (vault (unwrap! (map-get? vaults vault-owner) ERR-VAULT-NOT-FOUND))
+    (accrued-fees (calculate-accrued-fees vault-owner))
+    (current-debt (+ (get debt vault) accrued-fees))
+    (current-time stacks-block-height)
+    (btc-price (var-get last-price-btc-usd))
+    (collateral-ratio (get-collateral-ratio (get collateral vault) current-debt))
+    (liquidation-amount (if (> busd-amount current-debt) current-debt busd-amount))
+    (btc-equivalent (/ (* liquidation-amount DECIMAL_PRECISION) btc-price))
+    (bonus-percentage (+ u100 LIQUIDATION_PENALTY)) ;; 110% (100% + 10% bonus)
+    (btc-with-bonus (/ (* btc-equivalent bonus-percentage) u100))
+    (final-collateral (- (get collateral vault) btc-with-bonus))
+    (final-debt (- current-debt liquidation-amount))
+  )
+    (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
+    (asserts! (not (var-get protocol-paused)) ERR-NOT-AUTHORIZED)
+    (asserts! (price-is-valid) ERR-PRICE-OUTDATED)
+    (asserts! (> busd-amount u0) ERR-ZERO-AMOUNT)
+    
+    ;; Check if the vault is actually liquidatable
+    (asserts! (< collateral-ratio LIQUIDATION-THRESHOLD) ERR-NOT-LIQUIDATABLE)
+    
+    ;; Burn BUSD from liquidator
+    (try! (ft-burn? busd liquidation-amount liquidator))
+    
+    ;; Transfer collateral to liquidator with bonus
+    ;; For example: (try! (as-contract (stx-transfer? btc-with-bonus tx-sender liquidator)))
+    (try! (as-contract (stx-transfer? btc-with-bonus tx-sender liquidator)))
+    
+    ;; Update vault state
+    (if (is-eq final-debt u0)
+      (map-delete vaults vault-owner)
+      (map-set vaults vault-owner {
+        collateral: final-collateral,
+        debt: final-debt,
+        last-fee-timestamp: current-time
+      })
+    )
+    
+    ;; Update global state
+    (var-set total-collateral (- (var-get total-collateral) btc-with-bonus))
+    (var-set total-debt (- (var-get total-debt) liquidation-amount))
+    
+    (ok true)
+  )
+)
