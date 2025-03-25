@@ -186,3 +186,57 @@
     (ok true)
   )
 )
+
+;; Repay debt and withdraw collateral
+(define-public (repay-and-withdraw (busd-to-repay uint) (collateral-to-withdraw uint))
+  (let (
+    (sender tx-sender)
+    (existing-vault (default-to { collateral: u0, debt: u0, last-fee-timestamp: u0 } (map-get? vaults sender)))
+    (accrued-fees (calculate-accrued-fees sender))
+    (current-debt (+ (get debt existing-vault) accrued-fees))
+    (new-debt (if (>= busd-to-repay current-debt) u0 (- current-debt busd-to-repay)))
+    (new-collateral (- (get collateral existing-vault) collateral-to-withdraw))
+    (current-time stacks-block-height)
+  )
+    (asserts! (var-get initialized) ERR-NOT-INITIALIZED)
+    (asserts! (not (var-get protocol-paused)) ERR-NOT-AUTHORIZED)
+    (asserts! (or (> busd-to-repay u0) (> collateral-to-withdraw u0)) ERR-ZERO-AMOUNT)
+    (asserts! (<= collateral-to-withdraw (get collateral existing-vault)) ERR-INSUFFICIENT-COLLATERAL)
+    (asserts! (<= busd-to-repay current-debt) ERR-TOO-MUCH-DEBT)
+    
+    ;; Check collateral ratio after withdrawal if debt remains
+    (if (> new-debt u0)
+      (begin
+        (asserts! (price-is-valid) ERR-PRICE-OUTDATED)
+        (asserts! (>= new-collateral MINIMUM_COLLATERAL) ERR-BELOW-MINIMUM)
+        (asserts! (is-collateral-ratio-valid new-collateral new-debt) ERR-INSUFFICIENT-COLLATERAL)
+      )
+      true
+    )
+    
+    ;; Burn BUSD from sender
+    (if (> busd-to-repay u0)
+      (try! (ft-burn? busd busd-to-repay sender))
+      true
+    )
+    
+    ;; Transfer collateral back to sender if withdrawing
+    (if (> collateral-to-withdraw u0)
+      ;; For example: (try! (as-contract (stx-transfer? collateral-to-withdraw tx-sender sender)))
+      (try! (as-contract (stx-transfer? collateral-to-withdraw tx-sender sender)))
+      true
+    )
+    
+    ;; Update vault and global state
+    (map-set vaults sender {
+      collateral: new-collateral,
+      debt: new-debt,
+      last-fee-timestamp: current-time
+    })
+    
+    (var-set total-collateral (- (var-get total-collateral) collateral-to-withdraw))
+    (var-set total-debt (- (var-get total-debt) (if (>= busd-to-repay current-debt) current-debt busd-to-repay)))
+    
+    (ok true)
+  )
+)
