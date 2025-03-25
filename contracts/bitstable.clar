@@ -290,3 +290,43 @@
     (ok true)
   )
 )
+
+;; Helper functions
+
+;; Calculate stability fees accrued since last update
+(define-private (calculate-accrued-fees (user principal))
+  (let (
+    (vault (default-to { collateral: u0, debt: u0, last-fee-timestamp: u0 } (map-get? vaults user)))
+    (debt (get debt vault))
+    (last-timestamp (get last-fee-timestamp vault))
+    (current-time stacks-block-height)
+    (time-elapsed (- current-time last-timestamp))
+    (fee-rate (/ (* STABILITY_FEE time-elapsed) (* u365 u86400))) ;; Annual rate prorated for elapsed time
+    (accrued-fee (/ (* debt fee-rate) u100))
+  )
+    (if (is-eq debt u0)
+      u0
+      accrued-fee
+    )
+  )
+)
+
+;; Check if price feed is valid (not too old)
+(define-private (price-is-valid)
+  (let (
+    (current-time stacks-block-height)
+    (last-update (var-get last-price-update))
+    (time-elapsed (- current-time last-update))
+  )
+    (and (> (var-get last-price-btc-usd) u0) (<= time-elapsed PRICE_TIMEOUT))
+  )
+)
+
+;; Check if collateral ratio is valid for a given amount of collateral and debt
+(define-private (is-collateral-ratio-valid (collateral uint) (debt uint))
+  (let (
+    (ratio (get-collateral-ratio collateral debt))
+  )
+    (>= ratio MIN-COLLATERAL-RATIO)
+  )
+)
