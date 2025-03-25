@@ -330,3 +330,41 @@
     (>= ratio MIN-COLLATERAL-RATIO)
   )
 )
+
+;; Calculate collateral ratio for a given amount of collateral and debt
+(define-private (get-collateral-ratio (collateral uint) (debt uint))
+  (let (
+    (btc-price (var-get last-price-btc-usd))
+    (collateral-value-usd (* collateral btc-price))
+  )
+    (if (is-eq debt u0)
+      u0 ;; Return 0 to avoid division by zero
+      (/ (* collateral-value-usd u100) (* debt DECIMAL_PRECISION))
+    )
+  )
+)
+
+;; Read-only functions
+
+;; Get vault information
+(define-read-only (get-vault (user principal))
+  (map-get? vaults user)
+)
+
+;; Get current BTC price
+(define-read-only (get-btc-price)
+  {
+    price: (var-get last-price-btc-usd),
+    last-update: (var-get last-price-update)
+  }
+)
+
+;; Get global stats
+(define-read-only (get-global-stats)
+  {
+    total-collateral: (var-get total-collateral),
+    total-debt: (var-get total-debt),
+    btc-price: (var-get last-price-btc-usd),
+    protocol-paused: (var-get protocol-paused)
+  }
+)
